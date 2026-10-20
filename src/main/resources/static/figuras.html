@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figuras dinámicas</title>
+<style>
+  :root {
+    --fondo: #f6f4ef; --tarjeta: #fff; --texto: #1d1d1f; --suave: #6b6b70; --borde: #e2ded5;
+    --acento: #b3263b; --acento-suave: #fbeef0;
+    --ok: #1f7a4d; --ok-suave: #e8f5ee; --error: #b3261e; --error-suave: #fdecea;
+    --externa: #2a6fb0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: var(--fondo); color: var(--texto); }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px; display: grid; gap: 16px;
+         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+  header { grid-column: 1 / -1; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  header p { margin: 4px 0 0; color: var(--suave); }
+  section { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 18px;
+            display: flex; flex-direction: column; gap: 12px; }
+  h2 { margin: 0; font-size: 1.05rem; }
+  .ayuda { margin: -6px 0 0; font-size: .85rem; color: var(--suave); }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--suave); }
+  input, select, textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--borde); border-radius: 8px;
+                            font: inherit; color: var(--texto); background: #fff; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento); outline-offset: -1px; }
+  textarea { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; min-height: 230px; resize: vertical; }
+  button { padding: 10px 12px; border: 0; border-radius: 8px; background: var(--acento); color: #fff;
+           font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .6; cursor: wait; }
+
+  .parametros { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+  .parametros:empty { display: none; }
+
+  /* Resultado del cálculo */
+  .resultado { display: none; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
+  .resultado.visible { display: block; }
+  .resultado .titulo { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+                       padding: 10px 14px; background: var(--acento-suave); font-weight: 600; }
+  .medidas { display: grid; grid-template-columns: 1fr 1fr; }
+  .medida { padding: 14px; text-align: center; }
+  .medida + .medida { border-left: 1px solid var(--borde); }
+  .medida span { display: block; font-size: .8rem; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+  .medida strong { display: block; font-size: 1.6rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  /* Mensajes cortos (éxito / error) */
+  .mensaje { display: none; padding: 10px 12px; border-radius: 8px; font-size: .9rem; }
+  .mensaje.ok { display: block; background: var(--ok-suave); color: var(--ok); }
+  .mensaje.error { display: block; background: var(--error-suave); color: var(--error); }
+
+  .origen { font-size: .72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; }
+  .origen.NATIVA { color: var(--suave); }
+  .origen.DINAMICA { color: var(--acento); }
+  .origen.EXTERNA { color: var(--externa); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Figuras dinámicas</h1>
+    <p>Cada figura se crea por reflexión a partir de su nombre y sus parámetros.</p>
+  </header>
+
+  <section>
+    <h2>1. Calcular área y perímetro</h2>
+    <label>Figura
+      <select id="figura"></select>
+    </label>
+    <div class="parametros" id="parametros"></div>
+    <button id="calcular">Calcular</button>
+    <div class="resultado" id="resultado">
+      <div class="titulo"><span id="resNombre"></span><span class="origen" id="resOrigen"></span></div>
+      <div class="medidas">
+        <div class="medida"><span>Área</span><strong id="resArea"></strong></div>
+        <div class="medida"><span>Perímetro</span><strong id="resPerimetro"></strong></div>
+      </div>
+    </div>
+    <div class="mensaje" id="msgCalculo"></div>
+  </section>
+
+  <section>
+    <h2>2. Nueva figura en Groovy</h2>
+    <p class="ayuda">La clase debe implementar <code>Figura</code>. Una vez compilada aparece en la lista de figuras.</p>
+    <textarea id="codigo" spellcheck="false"></textarea>
+    <button id="registrar">Compilar y registrar</button>
+    <div class="mensaje" id="msgRegistro"></div>
+  </section>
+
+  <section>
+    <h2>3. Importar del servicio externo</h2>
+    <p class="ayuda">Descarga el código de la figura, lo compila y la agrega a la lista.</p>
+    <label>Figura disponible
+      <select id="externa"></select>
+    </label>
+    <button id="importar">Importar</button>
+    <div class="mensaje" id="msgImportar"></div>
+  </section>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const ORIGENES = { NATIVA: 'Nativa', DINAMICA: 'Dinámica', EXTERNA: 'Externa' };
+  let figuras = [];
+
+  const formato = n => n.toLocaleString('es', { maximumFractionDigits: 4 });
+
+  function mensaje(id, tipo, texto) {
+    $(id).className = 'mensaje ' + tipo;
+    $(id).textContent = texto;
+  }
+  function ocultar(id) { $(id).className = $(id).classList.contains('resultado') ? 'resultado' : 'mensaje'; }
+
+  /** Llama a la API y devuelve { ok, datos }; los errores traen un "detail" legible (ProblemDetail). */
+  async function llamar(url, opciones) {
+    try {
+      const r = await fetch(url, opciones);
+      const datos = await r.json().catch(() => ({}));
+      return { ok: r.ok, datos };
+    } catch {
+      return { ok: false, datos: { detail: 'No se pudo conectar con el servidor.' } };
+    }
+  }
+
+  async function cargarFiguras(seleccionar) {
+    const { ok, datos } = await llamar('/api/figuras');
+    if (!ok) return;
+    figuras = datos;
+    const anterior = seleccionar || $('figura').value;
+    $('figura').innerHTML = '';
+    for (const origen of Object.keys(ORIGENES)) {
+      const grupo = figuras.filter(f => f.origen === origen);
+      if (!grupo.length) continue;
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = ORIGENES[origen] + 's';
+      grupo.forEach(f => optgroup.appendChild(new Option(f.nombre, f.nombre)));
+      $('figura').appendChild(optgroup);
+    }
+    if (figuras.some(f => f.nombre === anterior)) $('figura').value = anterior;
+    mostrarParametros();
+  }
+
+  function mostrarParametros() {
+    const figura = figuras.find(f => f.nombre === $('figura').value);
+    $('parametros').innerHTML = '';
+    ocultar('resultado');
+    ocultar('msgCalculo');
+    (figura ? figura.parametros : []).forEach(nombre => {
+      const label = document.createElement('label');
+      label.textContent = nombre;
+      const input = document.createElement('input');
+      Object.assign(input, { type: 'number', step: 'any', min: '0', placeholder: 'ej. 5', name: nombre });
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') calcular(); });
+      label.appendChild(input);
+      $('parametros').appendChild(label);
+    });
+    const primero = $('parametros').querySelector('input');
+    if (primero) primero.focus();
+  }
+
+  async function calcular() {
+    ocultar('resultado');
+    const parametros = {};
+    for (const input of $('parametros').querySelectorAll('input')) {
+      if (input.value.trim() === '') {
+        mensaje('msgCalculo', 'error', 'Ingresa un valor para "' + input.name + '".');
+        input.focus();
+        return;
+      }
+      parametros[input.name] = Number(input.value);
+    }
+    const { ok, datos } = await llamar('/api/figuras/calcular', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ figura: $('figura').value, parametros })
+    });
+    if (!ok) { mensaje('msgCalculo', 'error', datos.detail || 'No se pudo calcular.'); return; }
+    ocultar('msgCalculo');
+    $('resNombre').textContent = datos.figura;
+    $('resOrigen').textContent = ORIGENES[datos.origen];
+    $('resOrigen').className = 'origen ' + datos.origen;
+    $('resArea').textContent = formato(datos.area);
+    $('resPerimetro').textContent = formato(datos.perimetro);
+    $('resultado').className = 'resultado visible';
+  }
+
+  async function ejecutar(boton, idMensaje, url, opciones) {
+    boton.disabled = true;
+    const { ok, datos } = await llamar(url, opciones);
+    boton.disabled = false;
+    if (!ok) { mensaje(idMensaje, 'error', datos.detail || 'Ocurrió un error.'); return; }
+    const params = datos.parametros.length ? ' Parámetros: ' + datos.parametros.join(', ') + '.' : '';
+    mensaje(idMensaje, 'ok', '✓ ' + datos.nombre + ' está lista para usarse.' + params);
+    await cargarFiguras(datos.nombre);
+  }
+
+  $('figura').addEventListener('change', mostrarParametros);
+  $('calcular').addEventListener('click', calcular);
+  $('registrar').addEventListener('click', e => ejecutar(e.target, 'msgRegistro', '/api/figuras/definiciones',
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: $('codigo').value }));
+  $('importar').addEventListener('click', e => ejecutar(e.target, 'msgImportar',
+    '/api/figuras/importar/' + encodeURIComponent($('externa').value), { method: 'POST' }));
+
+  fetch('/Pentagono.groovy').then(r => r.text()).then(t => $('codigo').value = t);
+  llamar('/catalogo-externo').then(({ ok, datos }) => {
+    if (ok) datos.forEach(n => $('externa').appendChild(new Option(n, n)));
+  });
+  cargarFiguras('Circulo');
+</script>
+</body>
+</html>
